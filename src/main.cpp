@@ -4,7 +4,7 @@
 
 
 const char *ssid = "networkESP32";
-const char *password= "azerty";
+const char *password= "azerty1234";
 
 const int led = 2;
 
@@ -12,11 +12,28 @@ AsyncWebServer server(80);
 void setup() {
 
 
-  Serial.begin(115200);
+  Serial.begin(9600);
 
   //GPIO
   pinMode(led,OUTPUT);
   digitalWrite(led,LOW);
+
+  if(!SPIFFS.begin())
+  {
+    Serial.println("Erreur SPIFFS...");
+    return;
+  }
+
+  File root = SPIFFS.open("/");
+  File file = root.openNextFile();
+
+  while(file)
+  {
+    Serial.print("File: ");
+    Serial.println(file.name());
+    file.close();
+    file = root.openNextFile();
+  }
 
   //WIFI
 
