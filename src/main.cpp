@@ -60,6 +60,10 @@ void setup() {
     request->send(SPIFFS, "/index.html", "text/html");
   });
 
+  server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
+      request->send(SPIFFS, "/style.css", "text/css");
+  });
+
   server.begin();
 }
 
