@@ -1,8 +1,7 @@
 #include <Arduino.h>
-#include <Arduino_FreeRTOS.h>
 
 void setup() {
-  // put your setup code here, to run once:
+  
 }
 
 void loop() {
