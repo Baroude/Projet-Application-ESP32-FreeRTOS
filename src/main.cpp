@@ -1,14 +1,18 @@
-#include <Arduino.h>
-#include <ESPAsyncWebServer.h>
+#include <WiFi.h>
 #include <SPIFFS.h>
 
 
 const char *ssid = "networkESP32";
 const char *password= "azerty1234";
 
+const char *indexHTML = "/index.html";
+
 const int led = 2;
 
-AsyncWebServer server(80);
+WiFiServer server(80);
+
+String header;
+
 void setup() {
 
 
@@ -20,53 +24,78 @@ void setup() {
 
   if(!SPIFFS.begin())
   {
-    Serial.println("Erreur SPIFFS...");
+    Serial.println("SPIFFS ERROR...");
     return;
-  }
-
-  File root = SPIFFS.open("/");
-  File file = root.openNextFile();
-
-  while(file)
-  {
-    Serial.print("File: ");
-    Serial.println(file.name());
-    file.close();
-    file = root.openNextFile();
   }
 
   //WIFI
 
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
+  
   WiFi.begin(ssid, password);
+  
   while (WiFi.status() != WL_CONNECTED) {
     delay(100);
     Serial.print(".");
-  }
+  } 
   // Print local IP address and start web server
   Serial.println("");
   Serial.println("WiFi connected.");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
+   
 
   //Server
-   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-  {
-    digitalWrite(led,HIGH);
-    delay(500);
-    digitalWrite(led,LOW);
-    Serial.println("Requête d'index.html, led clignote");
-    request->send(SPIFFS, "/index.html", "text/html");
-  });
-
-  server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *request){
-      request->send(SPIFFS, "/style.css", "text/css");
-  });
-
   server.begin();
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  WiFiClient client = server.available();
+
+  if(client){
+
+    Serial.println("New client connected");
+    String currentLine= "";
+    while (client.connected()){
+
+      if(client.available()){
+
+        char c = client.read();
+        Serial.write(c);
+        header += c;
+        if (c == '\n'){
+          if (currentLine.length() == 0){
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-type:text/html");
+            client.println("Connection: close");
+            client.println();
+
+            if (header.indexOf("GET /") >= 0){
+              Serial.println("HTTP GET request on /, LED blinks");
+              digitalWrite(led, HIGH);
+              delay(600);
+              digitalWrite(led,LOW);
+              File pageWeb = SPIFFS.open(indexHTML, "r");
+              while (pageWeb.available()){
+                client.println(pageWeb.readString());
+              }
+              pageWeb.close(); 
+              
+             
+            }
+
+          }
+          else{
+            currentLine = "";
+          }
+
+        }
+        else if (c != '\r'){
+          currentLine += c;
+        }
+      }
+    }
+    
+    
+  }
+ 
 }
