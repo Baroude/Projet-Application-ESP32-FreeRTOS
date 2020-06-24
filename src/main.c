@@ -110,7 +110,7 @@ esp_err_t get_index_handler(httpd_req_t *req)
     httpd_resp_send(req, resp, strlen(resp));
 
     gpio_set_level(led, 1);
-    vTaskDelay(200);
+    vTaskDelay(200 / portTICK_PERIOD_MS);
     gpio_set_level(led, 0);
 
     return ESP_OK;
