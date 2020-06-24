@@ -81,25 +81,24 @@ void printWiFiIP(void *pvParam){
     }
 }
 
-esp_err_t get_index_handler(httpd_req_t *req)
-{
-    DIR *dir = opendir("/spiffs");
+void task_index_request(void * param) {
+    httpd_req_t *req = (httpd_req_t *) param;
+
+    DIR *dir = opendir("/spiffs/");
     if(dir == NULL) {
         printf("Erreur d'ouverture de repertoire !\n");
-        return;
     }
-    
-    /**
+
     struct dirent *dirent = NULL;
 
-    printf("Liste des fichiers\n");
+    /**printf("Liste des fichiers\n");
     while((dirent = readdir(dir)) != NULL){
         printf("Fichier : %s\n", dirent->d_name);
     }
 
 
     char buf[500];
-    FILE *f = fopen("/index.html", "r");
+    FILE *f = fopen("/spiffs/index.html", "r");
     if(f == NULL) {
         printf("Erreur lors de l'ouverture du fichier index.html !");
         return -1;
@@ -113,22 +112,35 @@ esp_err_t get_index_handler(httpd_req_t *req)
     vTaskDelay(200 / portTICK_PERIOD_MS);
     gpio_set_level(led, 0);
 
+    vTaskDelete(NULL);
+}
+
+esp_err_t get_index_handler(httpd_req_t *req)
+{
+    xTaskCreate(task_index_request, "TASK INDEX.HTML", 1000, (void *)req, 5, NULL);
     return ESP_OK;
 }
 
-esp_err_t get_style_handler(httpd_req_t *req)
-{
-   /* Send a simple response */
+
+void task_style_request(void * param) {
+    httpd_req_t *req = (httpd_req_t *)param;
     char buf[500];
-    FILE *f = fopen("/style.css", "r");
+    FILE *f = fopen("/spiffs/style.css", "r");
     if(f == NULL) {
         printf("Erreur lors de l'ouverture du fichier style.css !");
-        return;
     }
     fgets(buf, 500, f);
 
     const char *resp = buf;
     httpd_resp_send(req, resp, strlen(resp));
+
+    vTaskDelete(NULL);
+}
+
+
+esp_err_t get_style_handler(httpd_req_t *req)
+{
+    xTaskCreate(task_style_request, "TASK STYLE.CSS", 1000, req, 2, NULL);
     return ESP_OK;
 }
 
@@ -170,14 +182,21 @@ void app_main() {
       .base_path = "/spiffs",
       .partition_label = NULL,
       .max_files = 5,
-      .format_if_mount_failed = true
+      .format_if_mount_failed = false
     };
 
     esp_err_t err = esp_vfs_spiffs_register(&conf);
     if(err != ESP_OK) {
         printf("Erreur montage SPIFFS ! %d\n", err);
+    } else {
+        size_t totalSize;
+        size_t used;
+        if(esp_spiffs_info(NULL, &totalSize, &used) == ESP_OK) {
+            printf("SPIFFS total size : %d\n", totalSize);
+            printf("SPIFFS used : %d\n", used);
+        }
     }
-
+    
     ESP_ERROR_CHECK( esp_event_loop_init(event_handler, NULL) );
     wifi_event_group = xEventGroupCreate();
     esp_err_t ret = nvs_flash_init();
