@@ -82,6 +82,17 @@ void loop() {
               
              
             }
+            /*
+            client.println("<!DOCTYPE html>");
+            client.println("<html lang=\"fr \">");
+            client.println("<head> <title> Serveur Web ESP32 </title>");
+            client.println("<meta name= \"Web Server ESP32 for benchmark\" charset=\"UTF-8\">");
+            client.println("<style>body{background-color:lightblue;}");
+            client.println("h1{color: black;text-align: center;}</style> </head>");
+            client.println("<body><h1>ESP32</h1></body> </html>");
+            client.println();
+            */
+            break;
 
           }
           else{
@@ -94,6 +105,10 @@ void loop() {
         }
       }
     }
+    header="";
+    client.stop();
+    Serial.println("Client disconnected.");
+    Serial.println("");
     
     
   }
