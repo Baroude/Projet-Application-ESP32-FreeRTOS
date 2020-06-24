@@ -3,7 +3,6 @@
 #include <string.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <esp_log.h>
 #include <driver/gpio.h>
 #include <esp_http_server.h>
 #include <esp_wifi_types.h>
@@ -11,11 +10,20 @@
 #include <esp_spiffs.h>
 #include <esp_event.h>
 #include <esp_event_base.h>
-#include <esp_system.h>
 #include <tcpip_adapter.h>
 #include <esp_log.h>
+#include <esp_event_loop.h>
+#include <freertos/event_groups.h>
+#include <esp_system.h>
+#include <nvs_flash.h>
+
+
+#define SSID      "networkESP32"
+#define PASSWORD      "azerty1234"
 
 const gpio_num_t led = GPIO_NUM_2;
+static EventGroupHandle_t wifi_event_group;
+const int CONNECTED_BIT = BIT0;
 
 
 esp_err_t get_index_handler(httpd_req_t *req)
@@ -31,6 +39,62 @@ esp_err_t get_index_handler(httpd_req_t *req)
     httpd_resp_send(req, resp, strlen(resp));
     return ESP_OK;
 }
+
+void wifi_connect(){
+    wifi_config_t cfg = {
+        .sta = {
+            .ssid = SSID,
+            .password = PASSWORD,
+        },
+    };
+    ESP_ERROR_CHECK( esp_wifi_disconnect() );
+    ESP_ERROR_CHECK( esp_wifi_set_config(ESP_IF_WIFI_STA, &cfg) );
+    ESP_ERROR_CHECK( esp_wifi_connect() );
+}
+
+static esp_err_t event_handler(void *ctx, system_event_t *event)
+{
+    switch(event->event_id) {
+    case SYSTEM_EVENT_STA_START:
+        wifi_connect();
+        break;
+    case SYSTEM_EVENT_STA_GOT_IP:
+        xEventGroupSetBits(wifi_event_group, CONNECTED_BIT);
+        break;
+    case SYSTEM_EVENT_STA_DISCONNECTED:
+        esp_wifi_connect();
+        xEventGroupClearBits(wifi_event_group, CONNECTED_BIT);
+        break;
+    default:
+        break;
+    }
+    return ESP_OK;
+}
+
+static void initialise_wifi(void)
+{
+    esp_log_level_set("wifi", ESP_LOG_NONE); // disable wifi driver logging
+    tcpip_adapter_init();
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
+    ESP_ERROR_CHECK( esp_wifi_set_mode(WIFI_MODE_STA) );
+    ESP_ERROR_CHECK( esp_wifi_start() );
+    esp_err_t ret = tcpip_adapter_set_hostname(TCPIP_ADAPTER_IF_STA ,"PROJET");
+    if(ret != ESP_OK ){
+      printf("failed to set hostname:%d\n",ret);  
+    }
+}
+
+void printWiFiIP(void *pvParam){
+    printf("printWiFiIP task started \n");
+    while(1){
+        xEventGroupWaitBits(wifi_event_group,CONNECTED_BIT,true,true,portMAX_DELAY);
+        tcpip_adapter_ip_info_t ip_info;
+	    ESP_ERROR_CHECK(tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_STA, &ip_info));
+	    printf("IP :  %s\n", ip4addr_ntoa(&ip_info.ip));
+    }
+}
+
 
 esp_err_t get_style_handler(httpd_req_t *req)
 {
@@ -86,6 +150,16 @@ void app_main() {
       .format_if_mount_failed = true
     };
     esp_vfs_spiffs_register(&conf);
+
+    ESP_ERROR_CHECK( esp_event_loop_init(event_handler, NULL) );
+    wifi_event_group = xEventGroupCreate();
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    initialise_wifi();
+    xTaskCreate(&printWiFiIP,"printWiFiIP",2048,NULL,5,NULL);
 
     /** LED init **/
     gpio_pad_select_gpio(led);
