@@ -16,6 +16,7 @@
 #include <freertos/event_groups.h>
 #include <esp_system.h>
 #include <nvs_flash.h>
+#include <dirent.h>
 
 
 #define SSID      "networkESP32"
@@ -24,21 +25,6 @@
 const gpio_num_t led = GPIO_NUM_2;
 static EventGroupHandle_t wifi_event_group;
 const int CONNECTED_BIT = BIT0;
-
-
-esp_err_t get_index_handler(httpd_req_t *req)
-{
-    /* Send a simple response */
-
-    char buf[500];
-    FILE *f = fopen("/spiffs/index.html", "r");
-    fread(buf, 50, 10, f);
-    buf[500] = '\0';
-
-    const char *resp = buf;
-    httpd_resp_send(req, resp, strlen(resp));
-    return ESP_OK;
-}
 
 void wifi_connect(){
     wifi_config_t cfg = {
@@ -95,14 +81,51 @@ void printWiFiIP(void *pvParam){
     }
 }
 
+esp_err_t get_index_handler(httpd_req_t *req)
+{
+    DIR *dir = opendir("/spiffs");
+    if(dir == NULL) {
+        printf("Erreur d'ouverture de repertoire !\n");
+        return;
+    }
+    
+    /**
+    struct dirent *dirent = NULL;
+
+    printf("Liste des fichiers\n");
+    while((dirent = readdir(dir)) != NULL){
+        printf("Fichier : %s\n", dirent->d_name);
+    }
+
+
+    char buf[500];
+    FILE *f = fopen("/index.html", "r");
+    if(f == NULL) {
+        printf("Erreur lors de l'ouverture du fichier index.html !");
+        return -1;
+    }
+    fgets(buf, 500, f); **/
+
+    const char *resp = "Les fichiers ne fonctionnent pas ! Pour le moment...";
+    httpd_resp_send(req, resp, strlen(resp));
+
+    gpio_set_level(led, 1);
+    vTaskDelay(200);
+    gpio_set_level(led, 0);
+
+    return ESP_OK;
+}
 
 esp_err_t get_style_handler(httpd_req_t *req)
 {
-    /* Send a simple response */
+   /* Send a simple response */
     char buf[500];
-    FILE *f = fopen("/spiffs/style.css", "r");
-    fread(buf, 50, 10, f);
-    buf[500] = '\0';
+    FILE *f = fopen("/style.css", "r");
+    if(f == NULL) {
+        printf("Erreur lors de l'ouverture du fichier style.css !");
+        return;
+    }
+    fgets(buf, 500, f);
 
     const char *resp = buf;
     httpd_resp_send(req, resp, strlen(resp));
@@ -112,14 +135,14 @@ esp_err_t get_style_handler(httpd_req_t *req)
 httpd_uri_t index_get = {
     .uri      = "/",
     .method   = HTTP_GET,
-    .handler  = get_index_handler,
+    .handler  = &get_index_handler,
     .user_ctx = NULL
 };
 
 httpd_uri_t style_get = {
     .uri      = "/style.css",
     .method   = HTTP_GET,
-    .handler  = get_style_handler,
+    .handler  = &get_style_handler,
     .user_ctx = NULL
 };
 
@@ -149,7 +172,11 @@ void app_main() {
       .max_files = 5,
       .format_if_mount_failed = true
     };
-    esp_vfs_spiffs_register(&conf);
+
+    esp_err_t err = esp_vfs_spiffs_register(&conf);
+    if(err != ESP_OK) {
+        printf("Erreur montage SPIFFS ! %d\n", err);
+    }
 
     ESP_ERROR_CHECK( esp_event_loop_init(event_handler, NULL) );
     wifi_event_group = xEventGroupCreate();
@@ -166,5 +193,8 @@ void app_main() {
     gpio_set_direction(led, GPIO_MODE_OUTPUT);
 
     /** Web server **/
-    start_webserver();
+    if(start_webserver() != NULL)
+        printf("Web server started !\n");
+    else
+        printf("Failed to start web server !\n");
 }
