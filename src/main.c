@@ -167,7 +167,7 @@ void printWiFiIP(void *pvParam){
 
 void app_main() {
 
-    esp_vfs_spiffs_conf_t conf = {
+    /* esp_vfs_spiffs_conf_t conf = {
       .base_path = "/spiffs",
       .partition_label = NULL,
       .max_files = 5,
@@ -184,7 +184,7 @@ void app_main() {
             printf("SPIFFS total size : %d\n", totalSize);
             printf("SPIFFS used : %d\n", used);
         }
-    }
+    } */
     
     ESP_ERROR_CHECK( esp_event_loop_init(event_handler, NULL) );
     wifi_event_group = xEventGroupCreate();
