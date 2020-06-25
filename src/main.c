@@ -99,13 +99,15 @@ static void http_server(void *pvParameters) {
 		err = netconn_accept(conn, &newconn);
 		printf("New client connected\n");
 		if (err == ERR_OK)
-			xTaskCreate(&http_server_netconn_serve, "http_server_netconn_serve", 2048, (void *)newconn, 2, NULL);
-		vTaskDelay(1); //allows task to be pre-empted
+			xTaskCreate(&http_server_netconn_serve, "http_server_netconn_serve", 2048, (void *)newconn, 1, NULL);
+		//vTaskDelay(1); //allows task to be pre-empted
 	} while(err == ERR_OK);
     printf("SERVOR ERROR !!\n");
 	netconn_close(conn);
 	netconn_delete(conn);
 	printf("\n");
+
+    vTaskDelete(NULL);
 }
 
 
@@ -201,5 +203,5 @@ void app_main() {
     gpio_set_direction(led, GPIO_MODE_OUTPUT);
 
     /** Web server **/
-    xTaskCreate(&http_server, "http_server", 2048, NULL, 5, NULL);
+    xTaskCreate(&http_server, "http_server", 2048, NULL, 15, NULL);
 }
