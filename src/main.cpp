@@ -71,9 +71,9 @@ void loop() {
 
             if (header.indexOf("GET /") >= 0){
               Serial.println("HTTP GET request on /, LED blinks");
-              digitalWrite(led, HIGH);
+              /* digitalWrite(led, HIGH);
               delay(600);
-              digitalWrite(led,LOW);
+              digitalWrite(led,LOW); */
               File pageWeb = SPIFFS.open(indexHTML, "r");
               while (pageWeb.available()){
                 client.println(pageWeb.readString());
