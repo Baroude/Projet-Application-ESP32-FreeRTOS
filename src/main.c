@@ -17,14 +17,98 @@
 #include <esp_system.h>
 #include <nvs_flash.h>
 #include <dirent.h>
+#include <lwip/api.h>
 
 
 #define SSID      "networkESP32"
 #define PASSWORD      "azerty1234"
 
+const static char http_html_hdr[] = "HTTP/1.1 200 OK\nContent-type: text/html\n\n";
+const static char http_css_hdr[] = "HTTP/1.1 200 OK\nContent-type: text/css\n\n";
+const static char http_index_hml[] = "<!DOCTYPE html><html lang=\"fr\"><head>    <title> Serveur Web ESP32 </title>    <meta name=\"Web Server ESP32 for benchmark\" charset=\"UTF-8\">    <link rel=\"stylesheet\" href=\"style.css\"></head><body>    <h1>ESP32</h1></body></html>";
+const static char http_style_css[] = "body{    background-color:lightblue;}h1{    color: black;    text-align: center;}";
+
+
 const gpio_num_t led = GPIO_NUM_2;
 static EventGroupHandle_t wifi_event_group;
 const int CONNECTED_BIT = BIT0;
+
+static void http_server_netconn_serve(void *param) {
+
+    struct netconn *conn = (struct netconn *)param;
+
+	struct netbuf *inbuf;
+	char *buf;
+	u16_t buflen;
+	err_t err;
+
+	err = netconn_recv(conn, &inbuf);
+
+	if (err == ERR_OK) {
+	  
+		netbuf_data(inbuf, (void**)&buf, &buflen);
+		
+		// extract the first line, with the request
+		char *first_line = strtok(buf, "\n");
+		
+		if(first_line) {
+			
+			// default page
+			if(strstr(first_line, "GET / ")) {
+                printf("Sending HTML page...\n");
+				netconn_write(conn, http_html_hdr, sizeof(http_html_hdr) - 1, NETCONN_NOCOPY);
+				netconn_write(conn, http_index_hml, sizeof(http_index_hml) - 1, NETCONN_NOCOPY);
+			}
+			
+			// ON page
+			else if(strstr(first_line, "GET /style.css ")) {
+				printf("Sending CSS page...\n");
+				netconn_write(conn, http_css_hdr, sizeof(http_css_hdr) - 1, NETCONN_NOCOPY);
+				netconn_write(conn, http_style_css, sizeof(http_style_css) - 1, NETCONN_NOCOPY);
+			}
+			
+			else printf("Unkown request: %s\n", first_line);
+		}
+		else printf("Unkown request\n");
+	}
+	
+	// close the connection and free the buffer
+	netconn_close(conn);
+	netbuf_delete(inbuf);
+
+    netconn_delete(conn);
+
+    gpio_set_level(led, 1);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+    gpio_set_level(led, 0);
+
+    vTaskDelete(NULL);
+}
+
+static void http_server(void *pvParameters) {
+	
+	struct netconn *conn;
+	err_t err;
+	conn = netconn_new(NETCONN_TCP);
+	netconn_bind(conn, NULL, 80);
+	netconn_listen(conn);
+	printf("HTTP Server listening...\n");
+	do {
+        static struct netconn *newconn;
+
+		err = netconn_accept(conn, &newconn);
+		printf("New client connected\n");
+		if (err == ERR_OK)
+			xTaskCreate(&http_server_netconn_serve, "http_server_netconn_serve", 2048, (void *)newconn, 2, NULL);
+		vTaskDelay(1); //allows task to be pre-empted
+	} while(err == ERR_OK);
+    printf("SERVOR ERROR !!\n");
+	netconn_close(conn);
+	netconn_delete(conn);
+	printf("\n");
+}
+
+
 
 void wifi_connect(){
     wifi_config_t cfg = {
@@ -81,101 +165,6 @@ void printWiFiIP(void *pvParam){
     }
 }
 
-void task_index_request(void * param) {
-    httpd_req_t *req = (httpd_req_t *) param;
-
-    DIR *dir = opendir("/spiffs/");
-    if(dir == NULL) {
-        printf("Erreur d'ouverture de repertoire !\n");
-    }
-
-    struct dirent *dirent = NULL;
-
-    /**printf("Liste des fichiers\n");
-    while((dirent = readdir(dir)) != NULL){
-        printf("Fichier : %s\n", dirent->d_name);
-    }
-
-
-    char buf[500];
-    FILE *f = fopen("/spiffs/index.html", "r");
-    if(f == NULL) {
-        printf("Erreur lors de l'ouverture du fichier index.html !");
-        return -1;
-    }
-    fgets(buf, 500, f); **/
-
-    const char *resp = "Les fichiers ne fonctionnent pas ! Pour le moment...";
-    httpd_resp_send(req, resp, strlen(resp));
-
-    gpio_set_level(led, 1);
-    vTaskDelay(200 / portTICK_PERIOD_MS);
-    gpio_set_level(led, 0);
-
-    vTaskDelete(NULL);
-}
-
-esp_err_t get_index_handler(httpd_req_t *req)
-{
-    xTaskCreate(task_index_request, "TASK INDEX.HTML", 1000, (void *)req, 5, NULL);
-    return ESP_OK;
-}
-
-
-void task_style_request(void * param) {
-    httpd_req_t *req = (httpd_req_t *)param;
-    char buf[500];
-    FILE *f = fopen("/spiffs/style.css", "r");
-    if(f == NULL) {
-        printf("Erreur lors de l'ouverture du fichier style.css !");
-    }
-    fgets(buf, 500, f);
-
-    const char *resp = buf;
-    httpd_resp_send(req, resp, strlen(resp));
-
-    vTaskDelete(NULL);
-}
-
-
-esp_err_t get_style_handler(httpd_req_t *req)
-{
-    xTaskCreate(task_style_request, "TASK STYLE.CSS", 1000, req, 2, NULL);
-    return ESP_OK;
-}
-
-httpd_uri_t index_get = {
-    .uri      = "/",
-    .method   = HTTP_GET,
-    .handler  = &get_index_handler,
-    .user_ctx = NULL
-};
-
-httpd_uri_t style_get = {
-    .uri      = "/style.css",
-    .method   = HTTP_GET,
-    .handler  = &get_style_handler,
-    .user_ctx = NULL
-};
-
-httpd_handle_t start_webserver(void)
-{
-    /* Generate default configuration */
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-
-    /* Empty handle to esp_http_server */
-    httpd_handle_t server = NULL;
-
-    /* Start the httpd server */
-    if (httpd_start(&server, &config) == ESP_OK) {
-        /* Register URI handlers */
-        httpd_register_uri_handler(server, &index_get);
-        httpd_register_uri_handler(server, &style_get);
-    }
-    /* If server failed to start, handle will be NULL */
-    return server;
-}
-
 void app_main() {
 
     esp_vfs_spiffs_conf_t conf = {
@@ -212,8 +201,5 @@ void app_main() {
     gpio_set_direction(led, GPIO_MODE_OUTPUT);
 
     /** Web server **/
-    if(start_webserver() != NULL)
-        printf("Web server started !\n");
-    else
-        printf("Failed to start web server !\n");
+    xTaskCreate(&http_server, "http_server", 2048, NULL, 5, NULL);
 }
